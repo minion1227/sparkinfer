@@ -4,11 +4,36 @@
 **Model:** Qwen3-30B-A3B, Q4_K_M GGUF (17.3 GiB), 48 layers, 128 experts top-8
 **Setting:** single stream, batch = 1, greedy decode
 
-| Engine | Prefill (pp512) | **Decode (tg)** | VRAM |
+| Engine | Decode (tg) | VRAM | gap to llama.cpp |
 |---|---:|---:|---:|
-| llama.cpp (CUDA) | 8856 tok/s | **240.5 tok/s** | 17.3 GB |
-| sparkinfer — fused selected-expert (current) | — | **32.7 tok/s** | 21.7 GB |
-| sparkinfer — baseline (dequant-all-experts) | — | 0.60 tok/s | 23.3 GB |
+| llama.cpp (CUDA) | **240.5 tok/s** | 17.3 GB | 1.0× |
+| sparkinfer — pass 4 (current) | **~119 tok/s** | 21.7 GB | **2.0×** |
+| sparkinfer — pass 3 (CUDA graph) | 118.7 tok/s | 21.7 GB | 2.0× |
+| sparkinfer — pass 2 (decode GEMV) | 84.4 tok/s | 21.7 GB | 2.85× |
+| sparkinfer — pass 1 (fused experts) | 32.7 tok/s | 21.7 GB | 7.3× |
+| sparkinfer — baseline | 0.60 tok/s | 23.3 GB | 400× |
+
+**4 optimization passes: 0.60 → ~119 tok/s (≈200×), gap to llama.cpp 400× → 2.0×.**
+
+Passes: (1) fused selected-expert quantized GEMV — dequant only the 8 routed
+experts on-read; (2) decode GEMV for dense projections (coalesced [out,in],
+replacing M=1 tiled GEMM); (3) CUDA-graph the whole decode step (capture once,
+replay per token); (4) 128-bit vectorized GEMV loads.
+
+### Profile of the remaining 8.4 ms/token (ablation, no NCU)
+| Component | Cost | Share |
+|---|---:|---:|
+| Attention block (QKV/O GEMV + RoPE + KV-append + gqa) | 3.4 ms | 40% |
+| └ gqa attention kernel alone | 1.2 ms | 14% |
+| MoE (router + fused experts) | ~0 ms | ~0% |
+| LM head + norms + residuals + rest | ~5.0 ms | 60% |
+
+The remaining gap is spread across many small **latency-bound** GEMVs (vectorizing
+the loads gave ~0 — they're not bandwidth-bound at bs=1), not one hot kernel.
+Next levers: flash-decoding attention (KV-split for occupancy + long-context
+scaling), and higher-throughput small-N GEMV (more outputs/warp, split-K).
+
+(historical first-pass note below.)
 
 **Optimization pass 1: 0.60 → 32.7 tok/s (~55×), gap to llama.cpp 400× → 7.3×.**
 
