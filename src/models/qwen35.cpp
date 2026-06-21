@@ -196,7 +196,9 @@ bool Qwen35Model::load_weights(const std::string& dir) {
         w.post_attn_norm = L(pfx + "post_attn_norm");
         w.router_w = L(pfx + "router_w");
         w.gate = L(pfx + "gate"); w.up = L(pfx + "up"); w.down = L(pfx + "down");
-        w.shared_gate = L(pfx + "shared_gate"); w.shared_up = L(pfx + "shared_up"); w.shared_down = L(pfx + "shared_down");
+        if (s.cfg.n_shared > 0) {
+            w.shared_gate = L(pfx + "shared_gate"); w.shared_up = L(pfx + "shared_up"); w.shared_down = L(pfx + "shared_down");
+        }
         if (!w.wq || !w.gate || !w.router_w) return false;
     }
     return true;
