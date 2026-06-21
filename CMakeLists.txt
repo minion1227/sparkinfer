@@ -4,9 +4,10 @@ project(sparkinfer_runtime LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
 # Primary target sm_120 (RTX 5090). Also Ada/Hopper/datacenter-Blackwell.
-set(CMAKE_CUDA_ARCHITECTURES "89;90;100;120" CACHE STRING "CUDA architectures")
+set(CMAKE_CUDA_ARCHITECTURES "89;90;100;120;121" CACHE STRING "CUDA architectures")
 
-option(BUILD_TESTS "Build unit / integration tests" ON)
+option(BUILD_TESTS    "Build unit / integration tests" ON)
+option(BUILD_EXAMPLES "Build example programs"          ON)
 
 find_package(CUDAToolkit REQUIRED)
 
@@ -32,4 +33,9 @@ set_target_properties(sparkinfer_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(BUILD_EXAMPLES)
+    add_executable(qwen35_generate examples/qwen35_generate.cpp)
+    target_link_libraries(qwen35_generate PRIVATE sparkinfer_runtime CUDA::cudart)
 endif()

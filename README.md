@@ -30,9 +30,13 @@ RTX Spark is NVIDIA's Blackwell-based AI superchip: 20-core ARM CPU + Blackwell 
 
 | Device | Memory | Bandwidth | Arch | Status |
 |---|---|---|---|---|
-| **RTX Spark** | 128 GB unified | ~273 GB/s | sm_100 | **Primary** |
-| RTX 5090 | 32 GB GDDR7 | 1.79 TB/s | sm_100 | Secondary |
-| Jetson Thor | TBD | TBD | sm_100 | Planned |
+| **RTX Spark** (GB10) | 128 GB unified | ~273 GB/s | sm_121 | **Primary** |
+| RTX 5090 (GB202) | 32 GB GDDR7 | 1.79 TB/s | sm_120 | Secondary |
+| Jetson Thor | unified | — | sm_121 | Planned |
+
+> Consumer Blackwell is `sm_120` (RTX 5090) / `sm_121` (RTX Spark, Jetson Thor) —
+> **not** `sm_100`, which is datacenter Blackwell (B200/GB200) and binary-incompatible.
+> Builds target `89;90;100;120;121`; requires CUDA Toolkit 12.8+.
 
 ---
 
@@ -53,14 +57,23 @@ This runtime is built specifically for that environment.
 
 ```
 include/sparkinfer/
-├── runtime.h       — Runtime lifecycle, device query
-├── scheduler.h     — Continuous batching, chunked prefill, priority preemption
-└── kv_cache.h      — Paged KV block allocator (FP8 compression option)
+├── runtime.h         — Runtime lifecycle, device query (SMs, bandwidth, cc)
+├── scheduler.h       — Continuous batching, priority preemption
+├── kv_cache.h        — Paged KV block allocator, per-layer sub-pools
+├── kv_ops.h          — KV append + residual add
+├── decode.h          — DecodeRunner: generic MoE decode-layer wiring
+└── models/qwen35.h   — Qwen3.5-35B-A3B model: config, weights, generate()
 
 src/
-├── scheduler/      — Latency-first scheduler implementation
-├── memory/         — Unified memory-aware allocator
-└── cuda_graph/     — CUDA graph capture and replay engine
+├── runtime.cpp       — device setup + capability query
+├── scheduler.cpp     — priority continuous-batching scheduler
+├── kv_cache.cpp      — paged block allocator + device block tables
+├── decode_layer.cpp  — DecodeRunner (norm→QKV→attn→O→residual→MoE→residual)
+├── models/qwen35.cpp — full Qwen3.5 forward + greedy generate loop
+└── csrc/cuda/kv_ops.cu — paged KV append + residual add kernels
+
+tools/convert_qwen35.py  — HF safetensors → sparkinfer weight format
+examples/qwen35_generate.cpp — greedy generation demo (token ids in/out)
 ```
 
 ---
@@ -80,8 +93,8 @@ Both fit in RTX Spark's 128 GB unified memory with significant headroom for KV c
 
 | Repo | Purpose |
 |---|---|
-| [sparkinfer-kernels](https://github.com/gittensor-ai-lab/sparkinfer-kernels) | CUDA/Triton kernels: flash decode, MoE grouped GEMM, fused ops |
-| [sparkinfer-moe](https://github.com/gittensor-ai-lab/sparkinfer-moe) | MoE engine: router, expert allocator, grouped GEMM dispatcher |
+| [sparkinfer-kernels](https://github.com/gittensor-ai-lab/sparkinfer-kernels) | Native CUDA + CuTe DSL kernels: flash decode, RoPE, MoE router/FFN, GEMM, RMSNorm |
+| [sparkinfer-moe](https://github.com/gittensor-ai-lab/sparkinfer-moe) | Sync-free MoE engine: router GEMM → top-k → SwiGLU expert FFN |
 | [sparkinfer-bench](https://github.com/gittensor-ai-lab/sparkinfer-bench) | Reproducible benchmarks for RTX Spark, RTX 5090, Jetson Thor |
 | [sparkinfer-agent](https://github.com/gittensor-ai-lab/sparkinfer-agent) | Kernel design agents: NCU report parsing, auto-tuning loops |
 
@@ -89,12 +102,66 @@ Both fit in RTX Spark's 128 GB unified memory with significant headroom for KV c
 
 ## Build
 
+The runtime is the integrator — it pulls in the sibling `../kernels` and `../moe`
+checkouts. Needs CUDA Toolkit 12.8+.
+
 ```bash
-cmake -B build \
-  -DCMAKE_CUDA_ARCHITECTURES="100" \   # sm_100 = Blackwell (RTX Spark / RTX 5090)
-  -DBUILD_TESTS=ON
+bash scripts/build.sh            # configures sm_120, builds, runs ctest
+# or manually:
+cmake -B build -DCMAKE_CUDA_ARCHITECTURES="120"   # 121 for RTX Spark
 cmake --build build -j$(nproc)
+ctest --test-dir build --output-on-failure
 ```
+
+---
+
+## Running Qwen3.5-35B-A3B
+
+The runtime runs Qwen3.5 end-to-end on token IDs (embed → 40 layers → LM head →
+greedy sample). The full layer is implemented: RMSNorm, Q/K/V projection,
+**per-head QK-norm**, **RoPE**, paged GQA flash-decode (8:1, head_dim=128),
+O-projection, residuals, **256-expert top-8 routed MoE + 1 shared expert**, all
+sync-free (token counts stay on-device, CUDA-graph capturable).
+
+**1. Convert weights** (one-time, CPU, needs the HF checkpoint):
+
+```bash
+pip install safetensors numpy
+python tools/convert_qwen35.py /path/to/hf/Qwen3.5-35B-A3B ./qwen35_weights
+```
+
+**2. Generate** (on an RTX 5090 / RTX Spark). Tokenize with the HF tokenizer to
+get input IDs, then:
+
+```bash
+./build/qwen35_generate ./qwen35_weights 64  <id0> <id1> ...   # 64 new tokens
+```
+
+It prints the generated token IDs; decode them with the HF tokenizer.
+
+```cpp
+// or from C++:
+sparkinfer::Qwen35Config cfg;                       // 35B-A3B defaults
+sparkinfer::KVCacheManager kv(kvc, 512ull<<20);
+auto engine = sparkinfer::moe::MoEEngine::create(mc);
+sparkinfer::Qwen35Model model(cfg, &kv, engine.get());
+model.load_weights("./qwen35_weights");
+auto out = model.generate(prompt_ids, 64);          // greedy
+```
+
+---
+
+## Verification
+
+- **Targets the 5090/Spark** — every `.cu` compiles through NVRTC → `ptxas
+  -arch=sm_120`/`sm_121` to a real cubin.
+- **Correct math** — `tests/qwen35_cpu_test` runs the *entire* Qwen3.5 forward
+  (embed, QK-norm, RoPE, multi-layer GQA, routed + shared MoE, LM head)
+  autoregressively and matches a double-precision reference to ~1e-8;
+  `tests/decode_layer_cpu_test` checks the layer composition; the kernel math is
+  covered in sparkinfer-kernels' `cpu_reference_test`.
+- **On hardware** — `tests/decode_runner_gpu_test` and `examples/qwen35_generate`
+  run the real device path (both self-skip cleanly when no GPU is present).
 
 ---
 
