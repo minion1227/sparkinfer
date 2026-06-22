@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.20)
+project(sparkinfer_runtime LANGUAGES CXX CUDA)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+# Primary target sm_120 (RTX 5090). Also Ada/Hopper/datacenter-Blackwell.
+set(CMAKE_CUDA_ARCHITECTURES "89;90;100;120;121" CACHE STRING "CUDA architectures")
+
+option(BUILD_TESTS    "Build unit / integration tests" ON)
+option(BUILD_EXAMPLES "Build example programs"          ON)
+
+find_package(CUDAToolkit REQUIRED)
+
+# This repo is the integrator: pull in sparkinfer-kernels and sparkinfer-moe.
+# In a superbuild the targets may already exist; standalone, add the siblings.
+if(NOT TARGET sparkinfer_kernels)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../kernels ${CMAKE_BINARY_DIR}/_kernels)
+endif()
+if(NOT TARGET sparkinfer_moe)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../moe ${CMAKE_BINARY_DIR}/_moe)
+endif()
+
+include_directories(include)
+
+file(GLOB_RECURSE RUNTIME_SRC "src/*.cpp" "csrc/cuda/*.cu")
+add_library(sparkinfer_runtime SHARED ${RUNTIME_SRC})
+target_include_directories(sparkinfer_runtime PUBLIC include)
+target_link_libraries(sparkinfer_runtime PUBLIC sparkinfer_moe sparkinfer_kernels CUDA::cudart)
+target_compile_options(sparkinfer_runtime PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:-O3;--use_fast_math;-lineinfo>)
+set_target_properties(sparkinfer_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+if(BUILD_EXAMPLES)
+    add_executable(qwen35_generate examples/qwen35_generate.cpp)
+    target_link_libraries(qwen35_generate PRIVATE sparkinfer_runtime CUDA::cudart)
+endif()
