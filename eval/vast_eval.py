@@ -19,7 +19,7 @@ it is stopped and a fresh box is provisioned via the vast API automatically; the
 
 Env: VAST_API_KEY, SSH_KEY (default ~/.ssh/id_ed25519), LLAMACPP_DIR, EVAL_IMAGE, EVAL_REPO, VAST_INSTANCE_FILE.
 """
-import argparse, json, os, subprocess, sys, time
+import argparse, json, os, random, subprocess, sys, time
 from vastai import VastAI
 
 REPO    = os.environ.get("EVAL_REPO",  "https://github.com/gittensor-ai-lab/sparkinfer")
@@ -94,14 +94,16 @@ def bring_up(v, iid, deadline_s):
     print(f">> instance {iid} did not become SSH-ready within {deadline_s}s")
     return None
 
-def provision(v, args):
+def provision(v, args, skip_hosts=None):
     """Create a fresh instance via the vast API. Returns the new instance id, or None."""
     offers = v.search_offers(query=f"gpu_name={args.gpu} num_gpus=1 cuda_vers>=12.8 inet_down>=100",
                              order="dph_total", limit=10)
     if not offers:
         print(">> no matching offers"); return None
-    off = offers[0]
-    print(f">> creating instance on offer {off['id']} {off.get('gpu_name')} ${off.get('dph_total'):.3f}/hr")
+    # Randomise within top-5 to avoid cycling on the same bad node across retries.
+    pool = [o for o in offers[:5] if (skip_hosts or set()) - {o.get("public_ipaddr")} or not skip_hosts]
+    off = random.choice(pool) if pool else offers[0]
+    print(f">> creating instance on offer {off['id']} {off.get('gpu_name')} ${off.get('dph_total'):.3f}/hr host={off.get('public_ipaddr','?')}")
     # Create via the CLI: the SDK's create_instance has no ssh/direct kwargs (those are CLI flags),
     # and --template_hash applies a preconfigured image+env. --raw returns {success, new_contract}.
     cmd = ["vastai", "create", "instance", str(off["id"]), "--disk", "120", "--ssh", "--direct", "--raw"]
@@ -128,6 +130,7 @@ def main():
     ap.add_argument("--reuse-timeout", type=int, default=300, help="seconds to wait for a reused box before recreating (default 300 = 5 min)")
     ap.add_argument("--new-timeout", type=int, default=900, help="seconds to wait for a freshly created box")
     ap.add_argument("--no-recreate", action="store_true", help="on reuse failure, error out instead of provisioning a new box")
+    ap.add_argument("--destroy-on-error", action="store_true", help="destroy (not just stop) the instance if the eval produces no result")
     args = ap.parse_args()
 
     v = VastAI(); created = False; iid = args.reuse
@@ -143,15 +146,16 @@ def main():
         elif args.no_recreate:
             sys.exit(f"instance {iid} never came up (--no-recreate)")
         else:
-            # Stop scheduling on the dead/stuck box, then fall through to provision a fresh one.
-            print(f">> reused instance {iid} is dead/stuck — stopping it and provisioning a new box")
-            try: v.stop_instance(id=iid)
-            except Exception as e: print("  stop:", str(e)[:150])
+            # Destroy the stuck box (can't SSH → no value in keeping disk) and provision a fresh one.
+            stuck_host = (info_of(v, iid) or {}).get("public_ipaddr")
+            print(f">> reused instance {iid} is dead/stuck — destroying it and provisioning a new box")
+            try: v.destroy_instance(id=iid)
+            except Exception as e: print("  destroy:", str(e)[:150])
             iid = 0
 
     # 2) No working box yet → create one via the vast API and bring it up.
     if not iid:
-        iid = provision(v, args)
+        iid = provision(v, args, skip_hosts={stuck_host} if 'stuck_host' in dir() and stuck_host else None)
         if not iid: sys.exit("could not provision an instance")
         created = True
         ep = bring_up(v, iid, args.new_timeout)    # fresh box: longer (provision + boot + first apt)
@@ -191,15 +195,18 @@ def main():
         r = sh(host, port, ev, timeout=10800)
         sys.stdout.write(r.stdout[-4000:])
         line = next((l for l in r.stdout.splitlines() if l.startswith("RESULT_JSON")), None)
+        got_result = bool(line)
         if line:
             print("\n=== VERDICT ==="); print(json.dumps(json.loads(line[len("RESULT_JSON "):]), indent=2))
         else:
             print("\n!! no RESULT_JSON; stderr tail:\n" + r.stderr[-1500:])
     finally:
         # Default: STOP after every eval — pauses compute billing, keeps disk + weights for fast reuse.
+        # --destroy-on-error: if the eval produced no result, destroy instead of stop (no cached value).
+        destroy = args.destroy or (args.destroy_on_error and not got_result)
         if args.keep:
             print(f">> leaving instance {iid} running (--keep)")
-        elif args.destroy:
+        elif destroy:
             print(f">> destroying instance {iid} (disk freed)");
             try: v.destroy_instance(id=iid)
             except Exception as e: print("destroy:", str(e)[:150])

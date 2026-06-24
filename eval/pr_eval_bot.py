@@ -146,7 +146,8 @@ def main():
         print(f"PR #{num} @ {oid}: evaluating '{ref}' ...")
         r = subprocess.run([sys.executable, os.path.join(HERE, "vast_eval.py"),
                             "--reuse", str(current_instance(args.instance)), "--ref", ref,
-                            "--frontier", str(frontier), "--ceiling", str(args.ceiling)],
+                            "--frontier", str(frontier), "--ceiling", str(args.ceiling),
+                            "--destroy-on-error"],
                            cwd=ROOT, capture_output=True, text=True, timeout=14400)
         line = next((l for l in r.stdout.splitlines() if l.startswith("RESULT_JSON")), None)
         if not line:
