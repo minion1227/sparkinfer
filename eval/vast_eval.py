@@ -177,8 +177,8 @@ def main():
         else:
             checkout = f"git fetch -q origin '{args.ref}' 2>/dev/null || true && git checkout -q '{args.ref}'"
         setup = ("export DEBIAN_FRONTEND=noninteractive; "
-                 "(command -v git >/dev/null && command -v cmake >/dev/null && dpkg -s libisl23 >/dev/null 2>&1) "
-                 "|| (apt-get update -q && apt-get install -y -q git curl cmake build-essential libisl23); "
+                 "(command -v git >/dev/null && command -v cmake >/dev/null && dpkg -s libisl23 >/dev/null 2>&1 && dpkg -s python3-pip >/dev/null 2>&1) "
+                 "|| (apt-get update -q && apt-get install -y -q git curl cmake build-essential libisl23 python3-pip); "
                  "python3 -m pip install -q --break-system-packages huggingface_hub 'huggingface-hub[cli]' tokenizers >/dev/null 2>&1 || true; "
                  f"if [ -d /root/sparkinfer/.git ]; then cd /root/sparkinfer && {checkout}; "
                  f"else git clone -q {REPO} /root/sparkinfer && cd /root/sparkinfer && {checkout}; fi")
