@@ -105,6 +105,17 @@ window.SPARKINFER = {
   ],
   "prs": [
     {
+      "num": 26,
+      "title": "runtime/gguf: clamp invalid general.alignment to default (fix divide-by-zero)",
+      "areas": [
+        "runtime"
+      ],
+      "label": "none",
+      "tps": 186.41,
+      "delta_pct": null,
+      "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/26"
+    },
+    {
       "num": 27,
       "title": "runtime/gguf: bounds-check tensor data region against file size (fix OOB read)",
       "areas": [
