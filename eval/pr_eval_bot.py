@@ -30,7 +30,21 @@ def current_instance(default):
 # bring-up failure it retries on later runs (~30 min apart) instead of provisioning immediately;
 # only after VAST_REUSE_MAX_RETRIES misses does it spin up a new box (the pinned one is kept).
 # Set VAST_DEFAULT_INSTANCE="" to disable the pin and always provision fresh.
-PINNED_INSTANCE = os.environ.get("VAST_DEFAULT_INSTANCE", "42682383").strip()
+# The pin id lives in a file so it can self-heal: when the pinned box is reclaimed and the eval
+# provisions a fresh one, we re-pin to that fresh box (write its id here). Seed/override via
+# VAST_DEFAULT_INSTANCE; set it to "" to disable pinning entirely (always provision fresh).
+PIN_FILE = os.path.expanduser(os.environ.get("VAST_PIN_FILE", "~/.sparkinfer_pinned_instance"))
+def _read_pin():
+    try:
+        v = open(PIN_FILE).read().strip()
+        if v: return v
+    except Exception: pass
+    return os.environ.get("VAST_DEFAULT_INSTANCE", "42682383").strip()
+def _write_pin(iid):
+    try:
+        with open(PIN_FILE, "w") as f: f.write(str(iid))
+    except Exception: pass
+PINNED_INSTANCE = _read_pin()
 PINNED_RETRY_RC = 75   # must match vast_eval.PINNED_RETRY_RC
 
 # Subsystem buckets for the deterministic area:<name> label (from a PR's top-level changed
@@ -506,7 +520,8 @@ def main():
                 try:
                     new_id = int(l.split()[1])
                     with open(INSTANCE_FILE, "w") as f: f.write(str(new_id))
-                    print(f"  (instance updated to {new_id})")
+                    if PINNED_INSTANCE: _write_pin(new_id)   # self-heal: re-pin to the fresh box
+                    print(f"  (instance updated to {new_id}{'; re-pinned' if PINNED_INSTANCE else ''})")
                 except Exception: pass
         line = next((l for l in r.stdout.splitlines() if l.startswith("RESULT_JSON")), None)
         if not line:

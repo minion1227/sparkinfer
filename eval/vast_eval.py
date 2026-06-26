@@ -220,18 +220,26 @@ def main():
         elif args.no_recreate:
             sys.exit(f"instance {iid} never came up (--no-recreate)")
         elif args.pinned:
-            # PINNED: never destroy the stable box. Leave it intact and retry on the next run;
-            # only provision a new box after REUSE_MAX_RETRIES consecutive misses.
-            n = _reuse_retries() + 1
-            if n <= REUSE_MAX_RETRIES:
-                _set_reuse_retries(n)
-                print(f">> pinned instance {iid} not SSH-ready within {args.reuse_timeout}s "
-                      f"(miss {n}/{REUSE_MAX_RETRIES}) — leaving it intact; retry on the next run (~30 min).")
-                sys.exit(PINNED_RETRY_RC)
-            _set_reuse_retries(0)
-            print(f">> pinned instance {iid} unavailable after {REUSE_MAX_RETRIES} retries — "
-                  f"provisioning a NEW box (pinned {iid} kept, NOT destroyed).")
-            iid = 0
+            # PINNED: never destroy the stable box. Two failure modes:
+            #  - box GONE (vast reclaimed it — common for stopped boxes): retrying is pointless,
+            #    provision a fresh one NOW (the bot then auto-re-pins to it).
+            #  - box EXISTS but won't resume (host busy): retry on the next run, provision only
+            #    after REUSE_MAX_RETRIES misses.
+            if info_of(v, iid) is None:
+                print(f">> pinned instance {iid} no longer exists (vast reclaimed it) — "
+                      f"provisioning a fresh box now.")
+                _set_reuse_retries(0); iid = 0
+            else:
+                n = _reuse_retries() + 1
+                if n <= REUSE_MAX_RETRIES:
+                    _set_reuse_retries(n)
+                    print(f">> pinned instance {iid} exists but not SSH-ready within {args.reuse_timeout}s "
+                          f"(miss {n}/{REUSE_MAX_RETRIES}) — leaving it intact; retry on the next run (~30 min).")
+                    sys.exit(PINNED_RETRY_RC)
+                _set_reuse_retries(0)
+                print(f">> pinned instance {iid} unavailable after {REUSE_MAX_RETRIES} retries — "
+                      f"provisioning a NEW box (pinned {iid} kept, NOT destroyed).")
+                iid = 0
         else:
             # Destroy the stuck box (can't SSH → no value in keeping disk) and provision a fresh one.
             stuck_host = (info_of(v, iid) or {}).get("public_ipaddr")
