@@ -52,3 +52,7 @@ On maintainer review, the **#57** copycat flag was removed as a misunderstanding
 the 2-strike threshold no longer applies, so `kiannidev` was removed from
 `blocked-contributors.txt`. The 5-day eval penalty from the #54 strike still stands
 (penalty window ends 2026-06-30). This supersedes the auto-block above.
+
+## 2026-06-26 — `kiannidev` (auto-blocked)
+
+Auto-blocked after 2 copycat PRs (#54, #57).
