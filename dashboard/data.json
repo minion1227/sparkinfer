@@ -3,7 +3,7 @@
   "status": {
     "gpu": "RTX 5090 · sm_120 · CUDA 13",
     "model": "Qwen3-30B-A3B · Q4_K_M",
-    "frontier_tps": 443.38,
+    "frontier_tps": 454.41,
     "ref_name": "llama.cpp",
     "ref_tps": 366,
     "vram_gb": 21.4,
@@ -708,6 +708,12 @@
       "name": "run Q/K/V projections on con",
       "tps": 443.38,
       "pr": 89,
+      "date": "2026-06-29"
+    },
+    {
+      "name": "single-pass MoE top-k + fuse",
+      "tps": 454.41,
+      "pr": 86,
       "date": "2026-06-29"
     }
   ]
