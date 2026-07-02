@@ -113,6 +113,27 @@
   ],
   "prs": [
     {
+      "num": 131,
+      "title": "perf(attn): 128-bit uint4 KV staging in 16k GQA flash-decode split (+6% decode)",
+      "areas": [
+        "kernels"
+      ],
+      "label": "S",
+      "tps": 264.09,
+      "delta_pct": 4.7,
+      "top1": 0.9302,
+      "kl": 0.0157,
+      "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/131",
+      "eval_mode": "longctx",
+      "score_context": 16384,
+      "ctx_2048_tps": 278.06,
+      "ctx_16384_tps": 264.09,
+      "guard_2k_baseline": 277.78,
+      "guard_2k_ratio": 1.001,
+      "guard_2k_pass": true,
+      "proof_url": "https://gittensor-ai-lab.github.io/sparkinfer-log/?run=0131-e3d6578"
+    },
+    {
       "num": 130,
       "title": "perf(attn): uint4 ldg KV staging + GQA TILE=14",
       "areas": [
@@ -794,18 +815,6 @@
       "tps": 186.38,
       "delta_pct": null,
       "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/21"
-    },
-    {
-      "num": 22,
-      "title": "fix(moe): validate router inputs before launching top-k kernel",
-      "areas": [
-        "kernels",
-        "moe"
-      ],
-      "label": "none",
-      "tps": 186.27,
-      "delta_pct": null,
-      "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/22"
     }
   ],
   "landed": [
