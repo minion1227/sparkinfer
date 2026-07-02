@@ -10,10 +10,10 @@
     "token_match": 0.9612,
     "kl": 0.0175,
     "ref_note": "128-tok decode, same RTX 5090 final main benchmark · seed 99162999bbd8efa5",
-    "longctx_16k_tps": 238.04,
-    "longctx_2k_tps": 279.9,
-    "longctx_token_match": 0.9579,
-    "longctx_kl": 0.0159
+    "longctx_16k_tps": 249.7,
+    "longctx_2k_tps": 279.28,
+    "longctx_token_match": 0.9643,
+    "longctx_kl": 0.0147
   },
   "context_baselines": [
     {
@@ -903,6 +903,13 @@
       "name": "Optimize 16k long-context GQ",
       "tps": 238.04,
       "pr": 124,
+      "ctx": 16384,
+      "date": "2026-07-02"
+    },
+    {
+      "name": "bf16 GQA tile12 + adaptive c",
+      "tps": 249.7,
+      "pr": 126,
       "ctx": 16384,
       "date": "2026-07-02"
     }
