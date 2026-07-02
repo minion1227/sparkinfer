@@ -10,7 +10,12 @@ window.SPARKINFER = {
     "vram_gb": 21.4,
     "token_match": 0.9612,
     "kl": 0.0175,
-    "ref_note": "128-tok decode, same RTX 5090 final main benchmark · seed 99162999bbd8efa5"
+    "ref_note": "128-tok decode, same RTX 5090 final main benchmark · seed 99162999bbd8efa5",
+    "longctx_16k_tps": 221.02,
+    "longctx_2k_tps": 275.55,
+    "longctx_32k_tps": 146.63,
+    "longctx_token_match": 0.9427,
+    "longctx_kl": 0.0136
   },
   "context_baselines": [
     {
@@ -855,6 +860,15 @@ window.SPARKINFER = {
       "name": "fuse QK-norm+RoPE+KV-append ",
       "tps": 484.79,
       "pr": 122,
+      "date": "2026-07-02"
+    }
+  ],
+  "landed_longctx": [
+    {
+      "name": "Optimize 16k long-context GQ",
+      "tps": 221.02,
+      "pr": 123,
+      "ctx": 16384,
       "date": "2026-07-02"
     }
   ]
