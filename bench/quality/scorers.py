@@ -194,6 +194,8 @@ def score_bfcl(item, output):
         return _result(False, "no JSON tool call found")
     if isinstance(call, list):
         call = call[0] if call else {}
+    if not isinstance(call, dict):
+        return _result(False, "JSON tool call is not an object")
     name = call.get("tool") or call.get("name") or call.get("function")
     args = call.get("arguments") or call.get("parameters") or call.get("args") or {}
     tgt = item["target"]

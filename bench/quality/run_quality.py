@@ -22,6 +22,10 @@ Usage:
 
   # only some benchmarks / fewer items:
   python3 run_quality.py --backend sparkinfer --benchmarks gsm8k,humaneval --limit 20 ...
+
+  # named quality tiers:
+  python3 run_quality.py --backend sparkinfer --tier development ...  # ~10%, 78 items
+  python3 run_quality.py --backend sparkinfer --tier benchmark ...    # ~25%, 196 items
 """
 import argparse, json, os, subprocess, sys, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +35,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Qwen3 chat template (thinking disabled) - identical to runtime/tools/run_qwen3.py.
 CHAT = "<|im_start|>user\n{p}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 MAXNEW = {"gsm8k": 320, "humaneval": 320, "mmlu_pro": 96, "ifeval": 200, "bfcl": 160}
+TIERS = {
+    # Fast pre-merge/dev check over every suite.
+    "development": {"bfcl": 30, "gsm8k": 13, "humaneval": 2, "ifeval": 3, "mmlu_pro": 30},
+    # Heavier benchmark check used for release/frontier quality claims.
+    "benchmark": {"bfcl": 75, "gsm8k": 33, "humaneval": 5, "ifeval": 8, "mmlu_pro": 75},
+}
 
 
 # - per-benchmark prompt construction -
@@ -114,13 +124,15 @@ def make_backend(args, items):
 
 # - driver -
 
-def load(benchmarks, limit):
+def load(benchmarks, limit, tier=""):
     items = []
+    tier_counts = TIERS.get(tier, {})
     for path in sorted(glob.glob(os.path.join(HERE, "data", "*.jsonl"))):
         name = os.path.splitext(os.path.basename(path))[0]
         if benchmarks and name not in benchmarks: continue
         rows = [json.loads(l) for l in open(path) if l.strip()]
-        items += rows[:limit] if limit else rows
+        n = limit or tier_counts.get(name, 0)
+        items += rows[:n] if n else rows
     return items
 
 
@@ -131,24 +143,30 @@ def main():
     ap.add_argument("--llama-cli")
     ap.add_argument("--benchmarks", default="", help="comma list; default all")
     ap.add_argument("--limit", type=int, default=0, help="items per benchmark (0=all)")
+    ap.add_argument("--tier", choices=sorted(TIERS),
+                    help="named per-suite sample: development ~=10%, benchmark ~=25%")
     ap.add_argument("--out", default="", help="write per-item JSONL results here")
     args = ap.parse_args()
 
     benchmarks = set(b for b in args.benchmarks.split(",") if b)
-    items = load(benchmarks, args.limit)
+    items = load(benchmarks, args.limit, args.tier or "")
     backend = make_backend(args, items)
 
     agg, results = {}, []
     for it in items:
         b = it["benchmark"]
-        out = backend.gen_for(it)
-        r = scorers.SCORERS[b](it, out)
+        try:
+            out = backend.gen_for(it)
+            r = scorers.SCORERS[b](it, out)
+        except Exception as e:  # keep long benchmark tiers running after malformed outputs
+            r = {"score": 0.0, "pass": False, "detail": "ERROR: " + repr(e)}
         agg.setdefault(b, []).append(r["score"])
         results.append({"id": it["id"], "benchmark": b, "score": r["score"],
                         "pass": r["pass"], "detail": r["detail"]})
         print(f"  {b:10s} {it['id']:6s} {'PASS' if r['pass'] else 'fail':4s}  {r['detail'][:70]}")
 
-    print("\n" + "=" * 46 + f"\nQUALITY REPORT  -  backend={args.backend}\n" + "=" * 46)
+    label = f"{args.backend}" + (f" / {args.tier}" if args.tier else "")
+    print("\n" + "=" * 46 + f"\nQUALITY REPORT  -  backend={label}\n" + "=" * 46)
     total = []
     for b in sorted(agg):
         s = agg[b]; total += s

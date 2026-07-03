@@ -53,10 +53,32 @@ python3 run_quality.py --backend llama \
 
 # 4. subset / limit while iterating:
 python3 run_quality.py --backend sparkinfer --benchmarks gsm8k,humaneval --limit 20 ...
+
+# 5. standard tiers:
+python3 run_quality.py --backend sparkinfer --tier development ...  # ~10%, 78 items
+python3 run_quality.py --backend sparkinfer --tier benchmark ...    # ~25%, 196 items
 ```
 
 **Quality parity** = run steps 2 and 3 (optionally `--out spark.jsonl` / `--out llama.jsonl`) and
 diff the per-benchmark percentages. Equal scores mean the optimization is quality-neutral.
+
+## Standard tiers
+
+| Tier | Purpose | Items |
+|---|---|--:|
+| `--tier development` | fast pre-merge capability check | 78 |
+| `--tier benchmark` | heavier release/frontier quality check | 196 |
+
+Current `benchmark` tier comparison on RTX 5090, Qwen3-30B-A3B, greedy decode:
+
+| Backend | BFCL | GSM8K | HumanEval | IFEval | MMLU-Pro | Overall |
+|---|---:|---:|---:|---:|---:|---:|
+| sparkinfer GGUF | 73.33% | 84.85% | 80.00% | 77.08% | 44.00% | 64.37% |
+| llama.cpp GGUF | 72.00% | 90.91% | 80.00% | 64.58% | 48.00% | 65.90% |
+| vLLM AWQ | 76.00% | 84.85% | 80.00% | 77.08% | 48.00% | 66.92% |
+
+The vLLM row uses HF AWQ weights because vLLM does not load GGUF. The sparkinfer and llama.cpp
+rows use the same GGUF.
 
 ## Data - real ~10% dev samples
 
