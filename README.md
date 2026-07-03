@@ -131,7 +131,7 @@ The top-level `CMakeLists.txt` is a superbuild (`kernels → moe → runtime`); 
 **Milestone 1 — RTX 5090 proof of concept and v1.0.** Make `sm_120` RTX 5090 the
 proof platform for Qwen3.6 MoE: fastest TPS and TTFT across tracked context sizes,
 DFlash3 as the default decode path, SOTA decode algorithms implemented as first-class
-runtime features, power/thermals optimized, and v1.0 deployed.
+runtime features, power/thermals optimized, and the v1.0 release target ready to ship.
 
 **Milestone 2 — PRO 6000 / RTX Spark v2.0.** Extend the same runtime across
 RTX 50xx, RTX PRO 6000, and unified-memory Blackwell systems such as RTX Spark / GB10 and
