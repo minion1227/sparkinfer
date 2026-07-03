@@ -1,10 +1,12 @@
+![sparkinfer banner](docs/sparkinfer.png)
+
 # SP⚡RKINFER
 
 **Blackwell-native MoE/LLM inference runtime for SN74 on Gittensor.**
 
 sparkinfer is the engineering loop for moving inference speed fast on consumer Blackwell GPUs:
 small CUDA changes, source-built PRs, same-box RTX 5090 evals, correctness gates against
-llama.cpp, and public dashboard updates when a frontier PR lands.
+llama.cpp, and public run logs when a frontier PR lands.
 
 The first target is Qwen3-30B-A3B / 35B-A3B Q4_K_M GGUF on `sm_120` / `sm_121`.
 The current work is not broad framework coverage; it is a focused sprint to make one real
@@ -16,22 +18,23 @@ Live RTX 5090 frontier, same Q4_K_M GGUF, 128 generated tokens:
 
 | context | sparkinfer | llama.cpp |
 |---:|---:|---:|
-| 128 | **487.10 tok/s** | 365.85 tok/s |
-| 512 | **460.96 tok/s** | 342.59 tok/s |
-| 4k | **348.68 tok/s** | 292.99 tok/s |
-| 16k | **265.17 tok/s** | 245.53 tok/s |
+| 128 | **493.56 tok/s** | 365.85 tok/s |
+| 512 | **469.58 tok/s** | 342.59 tok/s |
+| 4k | **392.65 tok/s** | 292.99 tok/s |
+| 16k | **266.14 tok/s** | 245.53 tok/s |
 
 The path so far:
 
 - RTX PRO 6000 proof: Qwen3-30B-A3B runs end-to-end, resident at about 21.7 GB with experts kept quantized.
-- RTX 5090 frontier: short-context decode moved from the initial 0.6 tok/s baseline to 487.10 tok/s.
+- RTX 5090 frontier: short-context decode moved from the initial 0.6 tok/s baseline to 493.56 tok/s.
 - Long-context work is now measured explicitly at 512, 4k, and 16k context so optimizations cannot hide a regression in another context.
 - Correctness is gated against llama.cpp with top-1 agreement and KL checks before any speed label is accepted.
 - Every evaluated PR has a reproducible source build and a public run log.
 
 Live data: [dashboard](https://gittensor-ai-lab.github.io/sparkinfer/dashboard/) ·
 [eval logs](https://github.com/gittensor-ai-lab/sparkinfer-log) ·
-[trust model](EVAL-TRUST.md)
+[trust model](EVAL-TRUST.md) ·
+[miner guide](docs/miner-guide.md)
 
 ## How we move fast on SN74
 
@@ -73,6 +76,13 @@ bench/scripts/accuracy.sh --download
 ```
 
 Your own model: `bench/scripts/bench.sh /path/to/model.gguf --tokens 256`. All options: [`bench/scripts/README.md`](bench/scripts/README.md).
+
+## Miner guide
+
+If you are contributing for SN74 rewards, start with the clear miner workflow:
+[`docs/miner-guide.md`](docs/miner-guide.md). It explains what scores, what gets
+rejected, how the 128 / 512 / 4k / 16k guards work, and the local commands to run
+before opening a PR.
 
 ## Layout & scoring
 
