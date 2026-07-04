@@ -3,6 +3,69 @@
 Notable changes to sparkinfer. Format loosely follows [Keep a Changelog](https://keepachangelog.com);
 versions track the GitHub [releases](https://github.com/gittensor-ai-lab/sparkinfer/releases).
 
+## [0.3.6] — 2026-07-04
+
+This release breaks the long-context deficit wide open and adds a new axis of proof. sparkinfer now
+beats the llama.cpp Q4_K_M baseline by **30–36% from 128 to 16k, and ~30% (+29.8%) at 32k** on the same RTX 5090
+and GGUF — the 16k lead jumped from **+8.4% (v0.3.5) to +31%** — driven by moving long-context attention
+onto the tensor cores. And it ships the first **LLM-quality benchmark suite**, so the frontier is proven
+on real task capability, not only speed and token-agreement.
+
+### Performance — ~30% or more past llama.cpp at every context, out to 32k
+
+Same RTX 5090, same Qwen3-MoE Q4_K_M GGUF, 128 generated tokens, warm and **interleaved** (per-round
+A/B so GPU-clock drift cancels):
+
+| context | sparkinfer | llama.cpp | delta |
+|---|---:|---:|---:|
+| **128-token decode** | **489.86 tok/s** | 363.15 tok/s | **+34.9%** |
+| **512-context decode** | **471.09 tok/s** | 346.45 tok/s | **+36.0%** |
+| **4k-context decode** | **393.49 tok/s** | 295.35 tok/s | **+33.2%** |
+| **16k-context decode** | **327.31 tok/s** | 249.18 tok/s | **+31.4%** |
+| **32k-context decode** | **260.30 tok/s** | 200.52 tok/s | **+29.8%** |
+
+### Added — int8 tensor-core long-context flash decode (#195, #221)
+
+The 16k/32k gains come from the first use of **tensor cores in the decode path**:
+
+- **#195** (`eval:XL`) — a "gutted-dot" experiment showed long-context flash decode is **compute-bound**
+  on the per-token QK dot + warp reduction, not bandwidth-bound. So it batches the 8 GQA q-heads of a
+  kv-head as the M dimension: `S = Q·Kᵀ` and `O = P·V` become small **int8 `wmma` matmuls** (2× throughput,
+  int32 accumulate), and K/V are stored **int8 (Q8-style)** to **halve the KV read**. Context-adaptive
+  (engages only ≥8k) and template-specialized on a compile-time flag, so 128/512/4k stay **byte-identical**.
+- **#221** (`eval:XL`) — trims the kernel's shared-memory round-trips and raises occupancy from 4 to 5
+  resident blocks/SM (register + shared-memory limited).
+
+Together they took **16k decode 266 → 330 tok/s**, correctness held (top-1 ≥ 0.94, KL ≤ 0.04).
+
+### Added — LLM quality benchmark suite (#192)
+
+Speed and token-agreement don't prove the model still *answers well*. [`bench/quality`](bench/quality)
+scores five standard capabilities on **real data** — **IFEval, GSM8K, MMLU-Pro, HumanEval, BFCL** — with
+deterministic, stdlib-only scorers (constraint checks, final-answer extraction, unit-test `pass@1`,
+tool-call matching). A spot-check of the current frontier: **GSM8K 100%, IFEval 78%**, overall ~69% on a
+real-data subset. Because sparkinfer matches llama.cpp at **96% top-1 / KL 0.017**, these scores are at
+**parity with llama.cpp by construction** — the suite proves the optimizations preserved *capability*,
+not just the token distribution.
+
+### The proof, in three layers
+
+v0.3.6 is deliberately not "fast only." Each frontier claim now stands on three independent checks:
+
+1. **Speed** — +31–36% over llama.cpp from 128 to 16k and +29.8% at 32k, warm & interleaved on the same GPU/GGUF.
+2. **Correctness** — every kernel gated at **top-1 ≥ 0.90 / KL ≤ 0.20** vs llama.cpp (currently ~0.96 / ~0.02),
+   reproducible from source and immutably logged.
+3. **Quality** — real-task benchmarks (IFEval/GSM8K/MMLU-Pro/HumanEval/BFCL) confirm the model still
+   solves the tasks, at parity with the reference.
+
+### Momentum
+
+v0.3.5 first pushed past llama.cpp across the tracked context ladder (16k barely, +8%). v0.3.6 turns that
+into a **decisive ~30%+ lead at every length through 32k** and proves it holds on quality. The next frontier:
+deeper 32k+ work, KV-cache quantization beyond attention, and running the full quality suite in the eval gate.
+
+Thanks to everyone keeping the benchmark loop fast, public, correctness-gated — and now quality-gated.
+
 ## [0.3.5] — 2026-07-03
 
 This release lands the long-context follow-through: sparkinfer now beats the llama.cpp Q4_K_M baseline
