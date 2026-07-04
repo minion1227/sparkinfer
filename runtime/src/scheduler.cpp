@@ -28,7 +28,13 @@ ScheduleBatch Scheduler::schedule() {
     std::sort(ordered.begin(), ordered.end(),
               [](const SequenceGroup* a, const SequenceGroup* b) { return a->priority > b->priority; });
     for (auto* g : ordered) {
-        if (batch.total_tokens + g->num_seqs > impl_->max_tokens_per_batch) break;
+        // Strict priority: stop at the first group that doesn't fit the token budget — but
+        // never return an empty batch while a runnable group exists. A group whose num_seqs
+        // exceeds max_tokens_per_batch would otherwise break on the very first iteration and
+        // never be scheduled (starvation / no forward progress), so admit the highest-priority
+        // group even when it alone overflows the budget.
+        if (!batch.decode_seq_ids.empty() &&
+            batch.total_tokens + g->num_seqs > impl_->max_tokens_per_batch) break;
         for (int i = 0; i < g->num_seqs; i++) batch.decode_seq_ids.push_back(g->group_id);
         batch.total_tokens += g->num_seqs;
     }
