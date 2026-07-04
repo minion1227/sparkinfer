@@ -60,7 +60,10 @@ def main():
     # globals
     write("embed_tokens", get("model.embed_tokens.weight"))          # [vocab, H]
     write("final_norm",   get("model.norm.weight"))                  # [H]
-    write("lm_head",      get("lm_head.weight").T)                   # [vocab,H] -> [H,vocab]
+    # lm_head.weight is absent when the model ties input/output embeddings; fall back to
+    # the input embedding (same [vocab, H] layout), matching convert_gguf.py's tied handling.
+    lm_head_name = "lm_head.weight" if "lm_head.weight" in tensors else "model.embed_tokens.weight"
+    write("lm_head",      get(lm_head_name).T)                       # [vocab,H] -> [H,vocab]
 
     for i in range(n_layers):
         p = f"model.layers.{i}."
