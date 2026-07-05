@@ -138,6 +138,50 @@ window.SPARKINFER = {
   ],
   "prs": [
     {
+      "num": 230,
+      "title": "perf(qwen3.6): shared expert as coalesced GEMVs — 7.2× decode (23→167 tok/s)",
+      "areas": [
+        "kernels",
+        "runtime"
+      ],
+      "label": "XL",
+      "tps": 170.84,
+      "delta_pct": 635.7,
+      "top1": 0.9779,
+      "kl": 0.0183,
+      "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/230",
+      "eval_mode": "longctx",
+      "score_context": 128,
+      "best_context_label": "128-context",
+      "context_gains_pct": {
+        "128-context": 635.75,
+        "512-context": 631.61,
+        "4k-context": 609.29
+      },
+      "regression_labels": [],
+      "ctx_128_tps": 170.84,
+      "ctx_512_tps": 169.44,
+      "ctx_4096_tps": 163.35,
+      "ctx_16384_tps": 0.0,
+      "ctx_32768_tps": 0.0,
+      "guard_128_baseline": 23.22,
+      "guard_128_ratio": 7.3575,
+      "guard_128_pass": true,
+      "guard_512_baseline": 23.16,
+      "guard_512_ratio": 7.3161,
+      "guard_512_pass": true,
+      "guard_4k_baseline": 23.03,
+      "guard_4k_ratio": 7.0929,
+      "guard_4k_pass": true,
+      "guard_16k_baseline": 0.0,
+      "guard_16k_ratio": 0.0,
+      "guard_16k_pass": true,
+      "guard_32k_baseline": 0.0,
+      "guard_32k_ratio": 0.0,
+      "guard_32k_pass": true,
+      "proof_url": "https://gittensor-ai-lab.github.io/sparkinfer-log/?run=0230-03c3069"
+    },
+    {
       "num": 229,
       "title": "feat(qwen36): add optimized Gated-DeltaNet AR state update kernel wit…",
       "areas": [
@@ -1074,18 +1118,6 @@ window.SPARKINFER = {
       "tps": 185.28,
       "delta_pct": null,
       "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/48"
-    },
-    {
-      "num": 45,
-      "title": "perf(kernels): CUDA-graph-safe RoPE __constant__ inv_freq table",
-      "areas": [
-        "kernels",
-        "runtime"
-      ],
-      "label": "none",
-      "tps": 183.4,
-      "delta_pct": null,
-      "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/45"
     }
   ],
   "landed": [
