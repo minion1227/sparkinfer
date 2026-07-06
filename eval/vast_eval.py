@@ -339,7 +339,21 @@ def main():
             # STALE local tracking ref, so on a REUSED box the same-box baseline built pre-merge code
             # (e.g. it measured main WITHOUT a just-merged PR). Strip any 'origin/' to the branch name.
             branch = args.ref.split("origin/", 1)[-1]
-            checkout = f"{reset}; git fetch -q origin '{branch}' && git checkout -qf FETCH_HEAD"
+            # Fetch + checkout, then VERIFY the resulting HEAD matches origin/<branch>.
+            # On a reused box with a stale local tree, a silent fetch failure left the box on
+            # a previous PR's commit (not main) — the same-box baseline then inflated every
+            # subsequent evaluation. The post-checkout guard catches this: if FETCH_HEAD ≠
+            # origin/<branch>, the fetch was a no-op on a disconnected remote, and the box
+            # must be re-cloned from scratch.
+            checkout = (
+                f"{reset}; git fetch -q origin '{branch}' && git checkout -qf FETCH_HEAD && "
+                f"if [ \"$(git rev-parse HEAD)\" != \"$(git rev-parse origin/{branch})\" ]; then "
+                f"echo '!! baseline checkout mismatch: HEAD != origin/{branch} — re-cloning'; "
+                f"cd / && rm -rf /root/sparkinfer && "
+                f"git clone -q {REPO} /root/sparkinfer && cd /root/sparkinfer && "
+                f"git fetch -q origin '{branch}' && git checkout -qf FETCH_HEAD; "
+                f"fi"
+            )
         # g++-12: nvcc 12.8 breaks against Ubuntu 24.04's GCC 13.3 libstdc++ (cstdio /__gnu_cxx
         # errors). The build pins CMAKE_CUDA_HOST_COMPILER=g++-12, so it must be present.
         setup = ("export DEBIAN_FRONTEND=noninteractive; "
