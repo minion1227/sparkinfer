@@ -792,9 +792,9 @@ def main():
         "128": float(os.environ.get("SPARKINFER_QWEN36_128", "23.22")),
         "512": float(os.environ.get("SPARKINFER_QWEN36_512", "23.16")),
         "4k":  float(os.environ.get("SPARKINFER_QWEN36_4K",  "23.03")),
-        "llama128": float(os.environ.get("SPARKINFER_QWEN36_LLAMA_128", "190")),
-        "llama512": float(os.environ.get("SPARKINFER_QWEN36_LLAMA_512", "188")),
-        "llama4k":  float(os.environ.get("SPARKINFER_QWEN36_LLAMA_4K",  "176")),
+        "llama128": float(os.environ.get("SPARKINFER_QWEN36_LLAMA_128", "275.81")),
+        "llama512": float(os.environ.get("SPARKINFER_QWEN36_LLAMA_512", "275.61")),
+        "llama4k":  float(os.environ.get("SPARKINFER_QWEN36_LLAMA_4K",  "276.30")),
     }
 
     dash = load_dash()
