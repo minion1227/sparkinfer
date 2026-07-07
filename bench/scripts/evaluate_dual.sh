@@ -101,9 +101,11 @@ P36_128="${P36_128:-0}"
 P36_512="${P36_512:-0}"
 P36_4K="${P36_4K:-0}"
 # Fall back to the bot's config defaults if measurement produced 0
-P36_128="${P36_128:-${SPARKINFER_P_GUARD_128_BASELINE:-300.16}}"
-P36_512="${P36_512:-${SPARKINFER_P_GUARD_512_BASELINE:-296.76}}"
-P36_4K="${P36_4K:-${SPARKINFER_P_GUARD_4K_BASELINE:-287.91}}"
+# (use value check, not null check: P36_* is already "0" from above, which is non-empty,
+# so ${P36_128:-default} would never fire — we need an explicit zero-guard)
+[ "${P36_128}" = "0" ] && P36_128="${SPARKINFER_P_GUARD_128_BASELINE:-300.16}"
+[ "${P36_512}" = "0" ] && P36_512="${SPARKINFER_P_GUARD_512_BASELINE:-296.76}"
+[ "${P36_4K}"  = "0" ] && P36_4K="${SPARKINFER_P_GUARD_4K_BASELINE:-287.91}"
 
 PRIMARY_JSON="$(run_model primary "$P_FILE" "$P_REPO" "$P_TOK" 0 \
   MODELS_DIR="$P_DIR" MODEL_SHA256="${QWEN36_MODEL_SHA256:-}" \
