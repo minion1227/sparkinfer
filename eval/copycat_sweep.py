@@ -12,7 +12,6 @@ from datetime import date
 from copycat_guard import *
 
 REPO = os.environ.get("EVAL_REPO", "gittensor-ai-lab/sparkinfer")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 
 
 def sweep(apply=False):

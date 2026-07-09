@@ -29,10 +29,21 @@ MAX_WARNINGS         = 2      # block on this many warnings across any PRs
 LEV_THRESH           = 0.70   # layer 3: token Levenshtein ratio ≥ this
 BIGRAM_COSINE_THRESH = 0.60   # layer 3: bigram cosine similarity ≥ this
 STRUCT_MIN            = 0.40   # layer 3: containment must be at least this to trigger
-# Layer 4: LLM judge (DeepSeek) — catches per-function copycats diluted by larger PR
+# Layer 4: LLM judge — catches per-function copycats diluted by larger PR
 LLM_FUNC_MIN          = 0.30   # per-function containment must be ≥30% to escalate
 LLM_CONFIDENCE_MIN    = 0.70   # LLM must be ≥70% confident to flag
-DEEPSEEK_API          = "https://api.deepseek.com/v1/chat/completions"
+LLM_BODY_MAX_CHARS    = 2000   # trim function bodies to keep token cost low
+LLM_MAX_TOKENS        = 150
+
+# Provider defaults (override via COPYCAT_LLM_PROVIDER / COPYCAT_LLM_MODEL env):
+#   openai   → gpt-4o-mini (default — cheap, stdlib-only, works in GHA)
+#   cursor   → composer-2.5 standard tier
+#   deepseek → legacy deepseek-chat
+PROVIDER_DEFAULTS = {
+    "cursor":   {"model": "composer-2.5", "api": ""},
+    "openai":   {"model": "gpt-4o-mini",  "api": "https://api.openai.com/v1/chat/completions"},
+    "deepseek": {"model": "deepseek-chat", "api": "https://api.deepseek.com/v1/chat/completions"},
+}
 
 
 def gh(args):
@@ -181,54 +192,130 @@ def per_function_containment(repo, copy_num, orig_num):
     return best, best_copy_sig, best_orig_sig
 
 
-def llm_judge_copycat(copy_func_body, orig_func_body, copy_sig, orig_sig):
-    """Call DeepSeek API to judge whether two code blocks are substantially the same.
-    Returns (is_copy: bool, confidence: float, explanation: str)."""
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-    if not api_key:
-        return False, 0.0, "no API key configured"
-    import urllib.request
-    prompt = (
+def _llm_provider():
+    """Pick LLM backend from env. Default: openai (gpt-4o-mini)."""
+    explicit = os.environ.get("COPYCAT_LLM_PROVIDER", "").strip().lower()
+    if explicit:
+        return explicit
+    if os.environ.get("OPENAI_API_KEY", "").strip():
+        return "openai"
+    if os.environ.get("CURSOR_API_KEY", "").strip():
+        return "cursor"
+    if os.environ.get("DEEPSEEK_API_KEY", "").strip():
+        return "deepseek"
+    return "openai"
+
+
+def _llm_api_key(provider):
+    keys = {
+        "cursor": "CURSOR_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+    }
+    env = keys.get(provider, "")
+    return os.environ.get(env, "").strip() if env else ""
+
+
+def _llm_model(provider):
+    return os.environ.get(
+        "COPYCAT_LLM_MODEL",
+        PROVIDER_DEFAULTS.get(provider, {}).get("model", "gpt-4o-mini"),
+    ).strip()
+
+
+def _build_judge_prompt(copy_func_body, orig_func_body, copy_sig, orig_sig):
+    cap = LLM_BODY_MAX_CHARS
+    return (
         "You are a code-copycat detector for a GPU kernel optimization contest. "
-        "Two contributors submitted CUDA kernels. Determine if the COPY function is "
-        "substantially derived from the ORIGINAL function (same computation, same memory "
-        "access pattern, same numerical method) even if variable names or minor structure differ.\n\n"
-        f"ORIGINAL function signature: {orig_sig}\n"
-        f"```cpp\n{orig_func_body[:3000]}\n```\n\n"
-        f"COPY function signature: {copy_sig}\n"
-        f"```cpp\n{copy_func_body[:3000]}\n```\n\n"
-        "Answer in this exact format:\n"
+        "Reply with ONLY the three lines below — no tools, no extra text.\n\n"
+        "Determine if the COPY function is substantially derived from the ORIGINAL "
+        "(same computation, memory access pattern, numerical method) even if names differ.\n\n"
+        f"ORIGINAL signature: {orig_sig}\n"
+        f"```cpp\n{orig_func_body[:cap]}\n```\n\n"
+        f"COPY signature: {copy_sig}\n"
+        f"```cpp\n{copy_func_body[:cap]}\n```\n\n"
         "COPYCAT: YES|NO\n"
         "CONFIDENCE: 0.XX\n"
-        "REASON: one sentence explaining why")
+        "REASON: one sentence")
+
+
+def _parse_judge_reply(reply):
+    is_copy = "COPYCAT: YES" in reply.upper()
+    conf = 0.0
+    for line in reply.splitlines():
+        if "CONFIDENCE:" in line.upper():
+            try:
+                conf = float(line.split(":")[-1].strip())
+            except ValueError:
+                pass
+    return is_copy, conf, f"LLM judge: {reply[:180]}"
+
+
+def _chat_complete_openai(api_url, api_key, model, prompt):
+    import urllib.request
+    req = urllib.request.Request(
+        api_url,
+        data=json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "max_tokens": LLM_MAX_TOKENS,
+        }).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        body = json.loads(resp.read())
+    return body["choices"][0]["message"]["content"].strip()
+
+
+def _chat_complete_cursor(api_key, model, prompt):
+    """Cursor Composer via SDK — standard tier (fast=false) for lower cost."""
+    from cursor_sdk import Agent, AgentOptions, LocalAgentOptions, ModelSelection, ModelParameterValue
+
+    selection = ModelSelection(id=model)
+    if model.startswith("composer"):
+        selection = ModelSelection(
+            id=model,
+            params=[ModelParameterValue(id="fast", value="false")],
+        )
+    result = Agent.prompt(
+        prompt,
+        AgentOptions(
+            api_key=api_key,
+            model=selection,
+            local=LocalAgentOptions(cwd=str(ROOT)),
+        ),
+    )
+    if result.status == "error":
+        raise RuntimeError(f"cursor run failed: {getattr(result, 'id', '?')}")
+    return (result.result or "").strip()
+
+
+def llm_judge_copycat(copy_func_body, orig_func_body, copy_sig, orig_sig):
+    """LLM judge for borderline per-function copycats. Returns (is_copy, confidence, note)."""
+    provider = _llm_provider()
+    api_key = _llm_api_key(provider)
+    if not api_key:
+        return False, 0.0, "no LLM API key configured (set OPENAI_API_KEY)"
+    model = _llm_model(provider)
+    prompt = _build_judge_prompt(copy_func_body, orig_func_body, copy_sig, orig_sig)
     try:
-        req = urllib.request.Request(
-            DEEPSEEK_API,
-            data=json.dumps({
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0, "max_tokens": 200
-            }).encode(),
-            headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {api_key}"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read())
-        reply = body["choices"][0]["message"]["content"].strip()
-        # parse
-        is_copy = "COPYCAT: YES" in reply.upper()
-        conf = 0.0
-        for line in reply.splitlines():
-            if "CONFIDENCE:" in line.upper():
-                try: conf = float(line.split(":")[-1].strip())
-                except: pass
-        reason = ""
-        for line in reply.splitlines():
-            if "REASON:" in line.upper():
-                reason = line.split(":", 1)[-1].strip()
-                break
-        return is_copy, conf, f"LLM judge: {reply[:180]}"
+        if provider == "cursor":
+            reply = _chat_complete_cursor(api_key, model, prompt)
+        elif provider in ("openai", "deepseek"):
+            api_url = os.environ.get(
+                "COPYCAT_LLM_API",
+                PROVIDER_DEFAULTS[provider]["api"],
+            )
+            reply = _chat_complete_openai(api_url, api_key, model, prompt)
+        else:
+            return False, 0.0, f"unknown COPYCAT_LLM_PROVIDER={provider!r}"
+        return _parse_judge_reply(reply)
     except Exception as e:
-        return False, 0.0, f"API error: {str(e)[:120]}"
+        return False, 0.0, f"API error ({provider}/{model}): {str(e)[:120]}"
 
 
 # ---- policy state management ----
@@ -288,7 +375,7 @@ def warn_copycat(repo, num, original, author, strike_count, containment_pct, str
     subprocess.run(["gh", "pr", "edit", str(num), "-R", repo, "--add-label", "copycat-warn"], capture_output=True)
     will_block = bool(strike_count >= MAX_WARNINGS)
     if llm_conf > 0:
-        head = (f"AI semantic analysis (DeepSeek) identified a function in this PR as "
+        head = (f"AI semantic analysis identified a function in this PR as "
                 f"substantially copied from #{original} (confidence {llm_conf:.0%}). "
                 f"Combined per-function containment: {containment_pct:.0%}.")
     elif structural and containment_pct >= COPYCAT_WARN:
