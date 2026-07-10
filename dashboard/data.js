@@ -2642,26 +2642,26 @@ window.SPARKINFER = {
     "baseline_tps": 256.95,
     "ref_name": "llama.cpp",
     "ref_tps": 224.91,
-    "token_match": 0.9595,
-    "kl": 0.0274,
+    "token_match": 0.9613,
+    "kl": 0.0141,
     "note": "PR #323 merged · same-box main baseline + eval:S @128 ctx · RTX 5090",
     "ctx": [
       {
         "label": "128",
         "color": "#D14D72",
-        "tps": 344.12,
+        "tps": 348.97,
         "ref_tps": 224.91
       },
       {
         "label": "512",
         "color": "#7B5DFF",
-        "tps": 337.89,
+        "tps": 343.25,
         "ref_tps": 225.1
       },
       {
         "label": "4k",
         "color": "#0E8A16",
-        "tps": 319.9,
+        "tps": 331.66,
         "ref_tps": 224.68
       }
     ]
@@ -2680,6 +2680,13 @@ window.SPARKINFER = {
       "pr": 324,
       "date": "2026-07-10",
       "label": "M"
+    },
+    {
+      "name": "GQA-4 shared-KV tile for Qwy",
+      "tps": 281.63,
+      "pr": 327,
+      "date": "2026-07-10",
+      "label": "XS"
     }
   ],
   "qwen36": {
