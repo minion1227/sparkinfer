@@ -182,7 +182,29 @@
       "guard_32k_ratio": 0.0,
       "guard_32k_pass": true,
       "proof_url": "https://gittensor-ai-lab.github.io/sparkinfer-log/?run=0323-ec3d7c9",
-      "proof_run": "0323-ec3d7c9"
+      "proof_run": "0323-ec3d7c9",
+      "mode": "bidir",
+      "label_qwen35": "S",
+      "label_qwen36": "none",
+      "pass_qwen35": true,
+      "pass_qwen36": true,
+      "score_qwen35": {
+        "tps": 271.85,
+        "top1": 0.9665,
+        "kl": 0.0261,
+        "ctx_128_tps": 271.85,
+        "ctx_512_tps": 268.04,
+        "ctx_4096_tps": 255.55,
+        "guard_128_baseline": 256.95,
+        "guard_512_baseline": 253.6,
+        "guard_4k_baseline": 242.08
+      },
+      "score_qwen36": {
+        "tps": 363.49,
+        "top1": 0.9809,
+        "kl": 0.0196,
+        "label": "none"
+      }
     },
     {
       "num": 318,
@@ -1917,35 +1939,43 @@
   "qwen35": {
     "model": "Qwythos-9B (Qwen3.5-9B) · Q4_K_M",
     "arch": "dense hybrid Gated-DeltaNet + full-attn · 9B · hd256",
-    "frontier_tps": 129.53,
-    "baseline_tps": 129.53,
+    "frontier_tps": 271.85,
+    "baseline_tps": 256.95,
     "ref_name": "llama.cpp",
     "ref_tps": 224.91,
-    "token_match": 0,
-    "kl": 0,
-    "note": "main baseline RTX 5090 2026-07-10 · dense hybrid loader · eval at 128/512/4k",
+    "token_match": 0.9665,
+    "kl": 0.0261,
+    "note": "PR #323 merged · same-box main baseline + eval:S @128 ctx · RTX 5090",
     "ctx": [
       {
         "label": "128",
-        "color": "#FF6B35",
-        "tps": 129.53,
+        "color": "#D14D72",
+        "tps": 271.85,
         "ref_tps": 224.91
       },
       {
         "label": "512",
-        "color": "#00B4D8",
-        "tps": 128.98,
+        "color": "#7B5DFF",
+        "tps": 268.04,
         "ref_tps": 225.1
       },
       {
         "label": "4k",
-        "color": "#9B5DE5",
-        "tps": 126.06,
+        "color": "#0E8A16",
+        "tps": 255.55,
         "ref_tps": 224.68
       }
     ]
   },
-  "landed_qwen35": [],
+  "landed_qwen35": [
+    {
+      "name": "requantize dense FFN down Q6_K→Q4_K",
+      "tps": 271.85,
+      "pr": 323,
+      "date": "2026-07-10",
+      "label": "S"
+    }
+  ],
   "qwen36": {
     "model": "Qwen3.6-35B-A3B · UD-Q4_K_M",
     "arch": "hybrid Gated-DeltaNet + full-attn MoE · 256 experts top-8 · hd256",

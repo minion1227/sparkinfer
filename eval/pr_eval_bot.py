@@ -556,6 +556,12 @@ CTX_SERIES = {
     16384: {"metric": "ctx_16384_tps", "guard": "guard_16k_baseline",  "status": "longctx_16k_tps",  "label": "16k", "color": "#B8860B", "llama": 245.53, "note": "llama-batched-bench npp=16384 ntg=128 npl=1"},
     32768: {"metric": "ctx_32768_tps", "guard": "guard_32k_baseline",  "status": "longctx_32k_tps",  "label": "32k", "color": "#6F42C1", "llama": 192.62, "note": "release-log llama.cpp estimate at 32k, ntg=128"},
 }
+# Qwen3.5 (Qwythos) per-context llama.cpp anchors — colors match CTX_SERIES.
+Q35_CTX_SERIES = {
+    128:  {"label": "128", "ref_tps": 224.91},
+    512:  {"label": "512", "ref_tps": 225.10},
+    4096: {"label": "4k",  "ref_tps": 224.68},
+}
 
 def load_dash():
     try:
@@ -711,6 +717,8 @@ def update_dashboard(repo, pr, areas, res, proof_url=None):
         entry["polaris_receipt_hash"] = res["polaris_receipt_hash"]
     for k in ("eval_mode", "score_context", "best_context_label", "context_gains_pct",
               "regression_labels", "auto_close",
+              "mode", "label_qwen35", "label_qwen36", "pass_qwen35", "pass_qwen36",
+              "score_qwen35", "score_qwen36",
               "ctx_128_tps", "ctx_512_tps", "ctx_2048_tps", "ctx_4096_tps",
               "ctx_16384_tps", "ctx_32768_tps",
               "guard_128_baseline", "guard_128_ratio", "guard_128_pass",
@@ -781,6 +789,34 @@ def _upsert_context_baselines(data, e):
     rows.sort(key=lambda r: int(r.get("ctx") or 0))
     return changed
 
+def _upsert_qwen35_ctx(data, sub):
+    """Refresh Qwen3.5 per-context sparkinfer bars from a merged bidir score_qwen35 block."""
+    q35 = data.setdefault("qwen35", {})
+    ctx_rows = {r.get("label"): r for r in q35.get("ctx") or []}
+    changed = False
+    for ctx, meta in Q35_CTX_SERIES.items():
+        measured = sub.get(CTX_SERIES[ctx]["metric"])
+        if measured is None:
+            continue
+        guard = sub.get(CTX_SERIES[ctx]["guard"])
+        old = (ctx_rows.get(meta["label"]) or {}).get("tps") or q35.get("frontier_tps") or 0
+        new = _scaled_context_tps(old, measured, guard) or round(float(measured), 2)
+        row = ctx_rows.get(meta["label"])
+        if row:
+            if round(float(row.get("tps") or 0), 2) < new:
+                row["tps"] = new
+                row["color"] = CTX_SERIES[ctx]["color"]
+                changed = True
+        else:
+            ctx_rows[meta["label"]] = {
+                "label": meta["label"], "color": CTX_SERIES[ctx]["color"],
+                "tps": new, "ref_tps": meta["ref_tps"],
+            }
+            changed = True
+    if changed:
+        q35["ctx"] = [ctx_rows[k] for k in ("128", "512", "4k") if k in ctx_rows]
+    return changed
+
 def record_merge(repo, num):
     """A frontier-advancing PR was MERGED → advance the displayed frontier by its verified same-box
     relative gain and add it to the journey (`landed`). Hardware-independent and merged-only;
@@ -790,7 +826,8 @@ def record_merge(repo, num):
     e = next((p for p in data.get("prs", []) if p.get("num") == num), None)
     if not e:
         return
-    if e.get("mode") == "bidir":
+    bidir = e.get("mode") == "bidir" or e.get("model") == "bidir"
+    if bidir:
         if not ((e.get("pass_qwen35") and e.get("label_qwen35") in SPEEDUP_LABELS) or
                 (e.get("pass_qwen36") and e.get("label_qwen36") in SPEEDUP_LABELS) or
                 e.get("label") in SPEEDUP_LABELS):
@@ -816,8 +853,11 @@ def record_merge(repo, num):
             old_f = round(q35.get("frontier_tps") or q35.get("baseline_tps") or 0, 2)
             new_f = round(max(old_f, sub.get("tps") or 0), 2)
             q35["frontier_tps"] = new_f
+            if not q35.get("baseline_tps") and sub.get("guard_128_baseline"):
+                q35["baseline_tps"] = round(float(sub["guard_128_baseline"]), 2)
             if sub.get("top1") is not None: q35["token_match"] = round(sub["top1"], 4)
             if sub.get("kl") is not None:   q35["kl"] = round(sub["kl"], 4)
+            _upsert_qwen35_ctx(data, sub)
             short = re.sub(r"^\w+(\([^)]*\))?:\s*", "", e.get("title", ""))[:28]
             landed = [m for m in data.get("landed_qwen35", []) if m.get("pr") != num]
             landed.append({"name": short or f"PR #{num}", "tps": new_f, "pr": num,
@@ -876,6 +916,9 @@ def record_merge(repo, num):
         return
 
     if any(m.get("pr") == num for m in data.get("landed", [])): return       # already recorded
+    # Bidir PRs must not advance the Qwen3-MoE frontier — route via the bidir branch above.
+    if bidir:
+        return
     # Advance by the VERIFIED SAME-BOX RELATIVE GAIN (delta_pct), NOT the raw measured tps. Raw tok/s
     # zig-zags ±2% with whichever box ran (hot vs cool) and breaks the journey's monotonicity; applying
     # the same-box gain to the displayed frontier keeps the headline hardware-independent and the journey
