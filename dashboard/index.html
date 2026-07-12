@@ -75,8 +75,13 @@
   .kpi .note{font-size:12.5px;color:var(--body);margin-top:7px}
 
   section{padding:42px 0}
-  .sec-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}
+  .sec-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;gap:12px;flex-wrap:wrap}
   .sec-h h2{font-size:24px;font-weight:700}
+  .sec-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .model-eq{font-weight:600;color:var(--muted);font-size:20px}
+  .hf-model{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--title);font-family:"Work Sans",sans-serif}
+  .hf-model:hover{color:var(--theme)}
+  .hf-model img{width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid var(--line);flex:0 0 auto}
   .sec-h .hint{font-size:13px;color:var(--muted)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:var(--shadow)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
@@ -252,7 +257,13 @@
   </section>
 
   <section>
-    <div class="sec-h"><h2>Qwen3.5 · per-context</h2><span class="hint">sparkinfer vs llama.cpp · 128 / 512 / 4k</span></div>
+    <div class="sec-h">
+      <div class="sec-title-row">
+        <h2>Qwen3.5 <span class="model-eq">(Qwythos)</span> · per-context</h2>
+        <a class="hf-model" id="detail-q35-hf" href="https://huggingface.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF" target="_blank" rel="noopener" title="empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF"></a>
+      </div>
+      <span class="hint">sparkinfer vs llama.cpp · 128 / 512 / 4k</span>
+    </div>
     <div class="card" id="detail-q35"></div>
   </section>
 
@@ -291,6 +302,18 @@
   const CTX_LABEL = {128:"128",512:"512",4096:"4k",16384:"16k",32768:"32k"};
   const ctxColor = ctx => CTX_COLOR[ctx] || "#7B5DFF";
   const LLAMA_FILL = "linear-gradient(90deg,#A9A9B4,#C8C8D4)";
+
+  (function(){
+    const q = D.qwen35 || {};
+    const repo = q.hf_repo || "empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF";
+    const el = $("detail-q35-hf");
+    if (!el) return;
+    el.href = `https://huggingface.co/${repo}`;
+    el.title = repo;
+    const av = q.hf_avatar || "";
+    el.innerHTML = (av ? `<img src="${av}" alt="empero-ai" width="20" height="20" loading="lazy">` : "") +
+      `<span>${repo}</span>`;
+  })();
 
   $("hero-meta").innerHTML = `GPU <b>${s.gpu}</b> &nbsp;·&nbsp; model <b>${s.model}</b>`;
   $("updated").textContent = "updated " + D.updated;
