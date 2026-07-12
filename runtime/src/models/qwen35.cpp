@@ -1315,7 +1315,16 @@ bool Qwen35Model::load_gguf(const std::string& path) {
             has_suffix(name, "attn_output.weight")) return true;
         return false;
     };
-    const bool req_lm_q4 = env_enabled("SPARKINFER_LMHEAD_REQUANT_Q4K", q35_dense9b_requant_default);
+    // The scored Qwen3.6-35B-A3B hybrid-MoE keeps its output projection in Q6_K. Its LM head is the
+    // single largest weight read per decoded token (vocab 248320 x hidden 2048), so requantizing it
+    // Q6_K->Q4_K at load (via the shared dev_quant_requant_q4k) trims ~2 bits/weight off that read and
+    // decodes it through the same int8 dp4a Q4_K MMVQ. #329's dense-9B default leaves this model
+    // untouched (not dense_ffn); enable it here. SPARKINFER_LMHEAD_REQUANT_Q4K=0 restores Q6_K.
+    const bool q36_moe35b_requant_default =
+        c.hybrid && !c.dense_ffn && c.vocab == 248320 && c.n_layers == 40 &&
+        H == 2048 && c.n_experts == 256 && c.top_k == 8;
+    const bool req_lm_q4 = env_enabled("SPARKINFER_LMHEAD_REQUANT_Q4K",
+                                       q35_dense9b_requant_default || q36_moe35b_requant_default);
     auto attn_w = [&](const std::string& name, int& type) -> const void* {
         const GGUFTensor* t = g.tensor(name);
         if (qattn && t && (t->ggml_type == 12 || t->ggml_type == 14 || t->ggml_type == 8))
